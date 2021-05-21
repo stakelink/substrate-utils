@@ -9,6 +9,7 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 NAME = 'substrate-utils'
+VERSION = '0.1'
 DESCRIPTION = ''
 URL = 'https://github.com/stakelink/substrate-utils'
 EMAIL = 'ops@stakelink.io'
@@ -16,7 +17,8 @@ AUTHOR = 'STAKELINK'
 REQUIRES_PYTHON = '>=3.6.0'
 LICENSE = 'MIT'
 REQUIRED = [
-    'substrate-interface>=0.12'
+    'substrate-interface>=0.13',
+    'cachetools'
 ]
 
 here = os.path.abspath(os.path.dirname(__file__))
