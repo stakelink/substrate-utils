@@ -18,7 +18,7 @@ def hashkey(*args, **kwargs):
 
 
 class TTLCacheStorage(TTLCache):
-    def __init__(self, maxsize, ttl, storage=None, storage_sync_timer=0, timer=time.monotonic, getsizeof=None):
+    def __init__(self, maxsize, ttl, storage=None, storage_sync_timer=0, storage_load=True, timer=time.monotonic, getsizeof=None):
         self.storage = storage
         self.storage_sync_timer = storage_sync_timer
 
@@ -27,7 +27,7 @@ class TTLCacheStorage(TTLCache):
 
         super().__init__(maxsize, ttl, timer, getsizeof)
 
-        if self.storage is not None:
+        if self.storage is not None and storage_load:
             try:
                 with open(self.storage, 'rb') as fh:
                     self._Cache__data = pickle.load(fh)
@@ -35,8 +35,8 @@ class TTLCacheStorage(TTLCache):
             except:
                 pass
 
-    def __getitem__(self, key, cache_getitem=Cache.__getitem__):
-        v = super().__getitem__(key, cache_getitem)
+    def __getitem__(self, key, cache_getitem=TTLCache.__getitem__):
+        v = cache_getitem(self, key)
 
         if self.storage is not None:
             now = datetime.timestamp(datetime.now())
@@ -48,3 +48,21 @@ class TTLCacheStorage(TTLCache):
                     print("[TTLCacheStorage] Sync", self.storage)
 
         return v
+
+    def clear(self):
+        print("[TTLCacheStorage] Clear")
+
+        if self.storage is not None:
+            with open(self.storage, 'wb') as fh:
+                fh.truncate()
+
+        self.__init__(
+            self.maxsize,
+            self.ttl,
+            self.storage,
+            self.storage_sync_timer,
+            False,
+            self.timer,
+            self.getsizeof
+        ) 
+        None

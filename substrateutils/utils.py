@@ -16,20 +16,32 @@ from .cache import TTLCacheStorage, hashkey
 
 class SubstrateUtils(SubstrateInterface):
 
-    def __init__(self, cache_ttl=0, cache_storage=None, cache_storage_sync_timer=0, **kwargs):
-        self.cache = TTLCacheStorage(maxsize=1000, ttl=cache_ttl, storage=cache_storage, storage_sync_timer=cache_storage_sync_timer)
+    def __init__(self, cache_ttl=0, cache_storage=None, cache_storage_sync_timer=0, debug_level=0, **kwargs):
+        self.cache = TTLCacheStorage(maxsize=1000, ttl=cache_ttl, storage=cache_storage, storage_load=True, storage_sync_timer=cache_storage_sync_timer)
+        self.debug_level = debug_level
+
         super().__init__(**kwargs)
 
+        activeEra = self.query('Staking', 'ActiveEra').value['index']
+        cachedActiveEra = self.Query('Staking', 'ActiveEra')['index']
+
+        if activeEra != cachedActiveEra:
+            self.cache.clear()
+
+        
+    def _debug(self, debug_level, str):
+        print(str) if self.debug_level >= debug_level else None
+             
 
     @cachedmethod(operator.attrgetter('cache'), key=hashkey)
     def _query(self, module, storage_function, params=None, block_hash=None):
-        print("[Request] _query >", module, storage_function, params)
+        self._debug(1, f"_query > {module} - {storage_function} - {params})")
         return self.query(module, storage_function, params, block_hash).value
 
 
     @cachedmethod(operator.attrgetter('cache'), key=hashkey)
     def _query_map(self, module, storage_function, params = None, block_hash = None, max_results = None, start_key = None, page_size = 100, ignore_decoding_errors = False):
-        print("[Request] _query_map >", module, storage_function, params)
+        self._debug(1, f"_query_map > {module} - {storage_function} - {params}")
         data_map = self.query_map(module, storage_function, params, block_hash, max_results, start_key, page_size, ignore_decoding_errors)
 
         data = {}
@@ -45,16 +57,21 @@ class SubstrateUtils(SubstrateInterface):
         return data
 
 
+    def ClearCache(self):
+        self.cache.clear()
+
+
     def Query(self, module, storage_function, params=None, block_hash=None, debug=True):
         if debug:
-            print('[Request] Query >', module, storage_function, params)
+            self._debug(1, f"Query > {module} - {storage_function} - {params}")
         data = self._query(module, storage_function, params, block_hash)
         return data
 
 
     def QueryMap(self, module, storage_function, params = None, block_hash = None, max_results = None, start_key = None, page_size = 100, ignore_decoding_errors = False, debug=True):
         if debug:
-            print('[Request] QueryMap >', module, storage_function, params)
+
+            self._debug(1, f"QueryMap > {module} - {storage_function} - {params}")
         data = self._query_map(module, storage_function, params, block_hash, max_results, start_key, page_size, ignore_decoding_errors)
         return data
 
@@ -103,9 +120,10 @@ class SubstrateUtils(SubstrateInterface):
             individual[item[0]] = item[1]
         eraRewardsPoints['individual'] = individual
 
-        eraValidatotRewards = self.QueryMap('Staking', 'ErasValidatorReward')[era]
-        if eraValidatotRewards is None:
-            return None
+        try:
+            eraValidatotRewards = self.QueryMap('Staking', 'ErasValidatorReward')[era]
+        except:
+            eraValidatotRewards = 0
 
         eraStakers = copy.deepcopy(self.QueryMap('Staking', 'ErasStakers', [era], page_size=1000, max_results=10000))
 
@@ -259,32 +277,6 @@ class SubstrateUtils(SubstrateInterface):
                     data[validatorID]['stake']['nominators'][nominatorID] = ledger['total']
                     data[validatorID]['stake']['total'] += ledger['total']
 
-
-        return data
-
-        for era in erasInfo:
-            for validatorID in erasInfo[era]['validators']:
-                if validatorID not in data:
-                    data[validatorID] = {
-                        'eras': {},
-                        'nominators': {},
-                        'preferences': validators[validatorID],
-                    }
-                data[validatorID]['eras'][era] = erasInfo[era]['validators'][validatorID]
-
-        nominators = self.QueryMap('Staking', 'Nominators', page_size=1000, max_results=10000)
-
-        for nominatorID in nominators:
-            for validatorID in nominators[nominatorID]['targets']:
-                if validatorID in data.keys():
-                    ledger = self.SmartLedger(nominatorID)
-                    if ledger is None:
-                        ledger = {
-                            'total': 0,
-                            'active': 0,
-                        }
-                    data[validatorID]['nominators'][nominatorID] = ledger['total']
-
         for validatorID in data:
             data[validatorID]['rewards'] = {
                 'points': functools.reduce(lambda a,b : a+data[validatorID]['eras'][b]['rewards']['points'] , data[validatorID]['eras'], 0),
@@ -294,6 +286,7 @@ class SubstrateUtils(SubstrateInterface):
             }
 
         return data
+
 
 
     def NominatorsInfo(self, filters={}, erasInfo=None):
